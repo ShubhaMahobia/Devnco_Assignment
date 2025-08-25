@@ -8,6 +8,10 @@ class Settings:
     ALLOWED_FILE_TYPES: List[str] = [".pdf", ".docx", ".txt"]
     UPLOAD_DIR: str = "storage/uploads"
     
+    # Document processing settings
+    CHUNK_SIZE: int = 800  # Default chunk size for text splitting
+    CHUNK_OVERLAP: int = 175  # Default overlap between chunks (150-200 range)
+    
     # API settings
     API_TITLE: str = "RAG Application API"
     API_VERSION: str = "1.0.0"

@@ -11,6 +11,10 @@ from langchain_community.document_loaders import (
     UnstructuredFileLoader
 )
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from src.services.storage import file_storage_service
+from src.utils.logger import stage_logger, ProcessingStage
+from config import settings
 
 from src.services.storage import file_storage_service
 from src.utils.logger import stage_logger, ProcessingStage
@@ -72,12 +76,31 @@ class DocumentProcessor:
                 stage_logger.error(ProcessingStage.EXTRACTING, f"Failed to extract text: {str(e)}")
                 raise
     
-    def create_chunks(self, documents: List[Document], chunk_size: int = 1000, overlap: int = 200) -> List[Document]:
-        """Split documents into chunks"""
+    def create_chunks(self, documents: List[Document], chunk_size: int = None, overlap: int = None) -> List[Document]:
+        """Split documents into chunks using RecursiveCharacterTextSplitter"""
         with stage_logger.time_stage(ProcessingStage.CHUNKING, "create_chunks"):
-            # For now, return the documents as-is
-            # TODO: Implement proper chunking using LangChain text splitters
-            return documents
+            # Use config values if not provided
+            chunk_size = chunk_size or settings.CHUNK_SIZE
+            overlap = overlap or settings.CHUNK_OVERLAP
+            
+            # Initialize the text splitter with configurable parameters
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=overlap,
+                length_function=len,
+                separators=["\n\n", "\n", " ", ""]
+            )
+            
+            # Split all documents into chunks
+            all_chunks = []
+            for doc in documents:
+                chunks = text_splitter.split_documents([doc])
+                all_chunks.extend(chunks)
+            
+            stage_logger.info(ProcessingStage.CHUNKING, 
+                            f"Split {len(documents)} documents into {len(all_chunks)} chunks "
+                            f"(chunk_size={chunk_size}, overlap={overlap})")
+            return all_chunks
     
     async def generate_embeddings(self, chunks: List[Document]) -> List[List[float]]:
         """Generate embeddings for document chunks"""
