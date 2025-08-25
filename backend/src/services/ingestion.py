@@ -4,6 +4,7 @@ from fastapi import UploadFile
 from pathlib import Path
 from datetime import datetime
 import uuid
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from langchain_community.document_loaders import (
     TextLoader,
@@ -128,10 +129,34 @@ class DocumentProcessor:
             return all_chunks
     
     async def generate_embeddings(self, chunks: List[Document]) -> List[List[float]]:
-        """Generate embeddings for document chunks"""
+        """Generate embeddings for document chunks using BGE model"""
         with stage_logger.time_stage(ProcessingStage.EMBEDDING, f"embed_{len(chunks)}_chunks"): 
-            # TODO: Implement embedding generation using LangChain embeddings
-            return None
+            try:
+                # Initialize BGE embeddings model using configuration
+                embeddings_model = HuggingFaceEmbeddings(
+                    model_name=settings.EMBEDDING_MODEL,
+                    model_kwargs={'device': settings.EMBEDDING_DEVICE},
+                    encode_kwargs={'normalize_embeddings': settings.NORMALIZE_EMBEDDINGS}
+                )
+                
+                # Extract text content from Document objects
+                texts = [chunk.page_content for chunk in chunks]
+                
+                # Generate embeddings for all chunks
+                embeddings = await asyncio.get_event_loop().run_in_executor(
+                    None, 
+                    embeddings_model.embed_documents,
+                    texts
+                )
+                
+                stage_logger.info(ProcessingStage.EMBEDDING, 
+                                f"Generated embeddings for {len(chunks)} chunks using {settings.EMBEDDING_MODEL}")
+                
+                return embeddings
+                
+            except Exception as e:
+                stage_logger.error(ProcessingStage.EMBEDDING, f"Error generating embeddings: {str(e)}")
+                raise Exception(f"Failed to generate embeddings: {str(e)}")
     
     async def index_document(self, file_id: str, chunks: List[Document], embeddings: List[List[float]]) -> Dict[str, Any]:
         """Index document chunks and embeddings"""

@@ -12,6 +12,11 @@ class Settings:
     CHUNK_SIZE: int = 800  # Default chunk size for text splitting
     CHUNK_OVERLAP: int = 175  # Default overlap between chunks (150-200 range)
     
+    # Embedding settings
+    EMBEDDING_MODEL: str = "BAAI/bge-base-en-v1.5"  # BGE embedding model
+    EMBEDDING_DEVICE: str = "cpu"  # Use "cuda" if GPU is available
+    NORMALIZE_EMBEDDINGS: bool = True  # Normalize embeddings for better similarity
+    
     # API settings
     API_TITLE: str = "RAG Application API"
     API_VERSION: str = "1.0.0"
