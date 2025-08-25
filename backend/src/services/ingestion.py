@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Optional
 from fastapi import UploadFile
 from pathlib import Path
 from datetime import datetime
+import uuid
 
 from langchain_community.document_loaders import (
     TextLoader,
@@ -76,8 +77,9 @@ class DocumentProcessor:
                 stage_logger.error(ProcessingStage.EXTRACTING, f"Failed to extract text: {str(e)}")
                 raise
     
-    def create_chunks(self, documents: List[Document], chunk_size: int = None, overlap: int = None) -> List[Document]:
-        """Split documents into chunks using RecursiveCharacterTextSplitter"""
+    def create_chunks(self, documents: List[Document], doc_id: str, doc_name: str, 
+                     chunk_size: int = None, overlap: int = None) -> List[Document]:
+        """Split documents into chunks using RecursiveCharacterTextSplitter with comprehensive metadata"""
         with stage_logger.time_stage(ProcessingStage.CHUNKING, "create_chunks"):
             # Use config values if not provided
             chunk_size = chunk_size or settings.CHUNK_SIZE
@@ -91,15 +93,38 @@ class DocumentProcessor:
                 separators=["\n\n", "\n", " ", ""]
             )
             
-            # Split all documents into chunks
+            # Split all documents into chunks with metadata
             all_chunks = []
-            for doc in documents:
+            timestamp = datetime.now().isoformat()
+            
+            for doc_index, doc in enumerate(documents):
                 chunks = text_splitter.split_documents([doc])
-                all_chunks.extend(chunks)
+                
+                # Add comprehensive metadata to each chunk
+                for chunk_index, chunk in enumerate(chunks):
+                    chunk_id = str(uuid.uuid4())
+                    
+                    # Get page number from original document metadata or calculate from doc_index
+                    page_number = doc.metadata.get('page', doc_index + 1)
+                    
+                    # Update chunk metadata with all required fields
+                    chunk.metadata.update({
+                        'doc_id': doc_id,
+                        'doc_name': doc_name,
+                        'page': page_number,
+                        'chunk_id': chunk_id,
+                        'ts': timestamp,
+                        'chunk_index': chunk_index,
+                        'total_chunks_in_doc': len(chunks),
+                        'chunk_size': chunk_size,
+                        'chunk_overlap': overlap
+                    })
+                    
+                    all_chunks.append(chunk)
             
             stage_logger.info(ProcessingStage.CHUNKING, 
                             f"Split {len(documents)} documents into {len(all_chunks)} chunks "
-                            f"(chunk_size={chunk_size}, overlap={overlap})")
+                            f"(chunk_size={chunk_size}, overlap={overlap}) for doc: {doc_name}")
             return all_chunks
     
     async def generate_embeddings(self, chunks: List[Document]) -> List[List[float]]:
@@ -129,7 +154,8 @@ class DocumentProcessor:
             documents = await self.extract_text(file_info["file_path"], file_info["content_type"])
             
             # Step 3: Create chunks (now working with Document objects)
-            chunks = self.create_chunks(documents)
+                       # Step 3: Create chunks with metadata
+            chunks = self.create_chunks(documents, file_info["file_id"], file.filename)
             
             # Step 4: Generate embeddings
             embeddings = await self.generate_embeddings(chunks)
