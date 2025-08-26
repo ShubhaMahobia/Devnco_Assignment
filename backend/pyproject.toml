@@ -20,4 +20,5 @@ dependencies = [
     "uvicorn[standard]>=0.24.0",
     "unstructured>=0.10.0",
     "docx2txt>=0.8",
+    "chromadb>=1.0.20",
 ]

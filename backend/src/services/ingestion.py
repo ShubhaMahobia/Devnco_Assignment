@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Dict, Any, List, Optional
 from fastapi import UploadFile
 from pathlib import Path
@@ -14,18 +15,16 @@ from langchain_community.document_loaders import (
 )
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from src.services.storage import file_storage_service
+from src.services.storage import file_storage_service, chroma_service
 from src.utils.logger import stage_logger, ProcessingStage
 from config import settings
-
-from src.services.storage import file_storage_service
-from src.utils.logger import stage_logger, ProcessingStage
 
 class DocumentProcessor:
     """Service for processing documents through the complete pipeline"""
     
     def __init__(self):
         self.storage_service = file_storage_service
+        self.vector_store = chroma_service
     
     async def extract_text(self, file_path: str, content_type: str) -> List[Document]:
         """Extract text from different file types using LangChain document loaders"""
@@ -132,14 +131,12 @@ class DocumentProcessor:
         """Generate embeddings for document chunks using BGE model"""
         with stage_logger.time_stage(ProcessingStage.EMBEDDING, f"embed_{len(chunks)}_chunks"): 
             try:
-                # Initialize BGE embeddings model using configuration
                 embeddings_model = HuggingFaceEmbeddings(
                     model_name=settings.EMBEDDING_MODEL,
                     model_kwargs={'device': settings.EMBEDDING_DEVICE},
                     encode_kwargs={'normalize_embeddings': settings.NORMALIZE_EMBEDDINGS}
                 )
                 
-                # Extract text content from Document objects
                 texts = [chunk.page_content for chunk in chunks]
                 
                 # Generate embeddings for all chunks
@@ -159,12 +156,21 @@ class DocumentProcessor:
                 raise Exception(f"Failed to generate embeddings: {str(e)}")
     
     async def index_document(self, file_id: str, chunks: List[Document], embeddings: List[List[float]]) -> Dict[str, Any]:
-        """Index document chunks and embeddings"""
+        """Index document chunks and embeddings using ChromaDB"""
         with stage_logger.time_stage(ProcessingStage.INDEXING, f"index_{file_id}"):
-            # TODO: Implement document indexing using vector store
-            stage_logger.info(ProcessingStage.INDEXING, 
-                            f"Indexed document {file_id} with {len(chunks)} chunks")
-            return None
+            try:
+                # Use ChromaDB service to index the documents
+                result = await self.vector_store.index_documents(file_id, chunks, embeddings)
+                
+                stage_logger.info(ProcessingStage.INDEXING, 
+                                f"Successfully indexed document {file_id} with {len(chunks)} chunks in ChromaDB")
+                
+                return result
+                
+            except Exception as e:
+                stage_logger.error(ProcessingStage.INDEXING, 
+                                 f"Failed to index document {file_id}: {str(e)}")
+                raise Exception(f"Document indexing failed: {str(e)}")
     
     async def process_document(self, file: UploadFile) -> Dict[str, Any]:
         """Complete document processing pipeline"""
@@ -178,14 +184,13 @@ class DocumentProcessor:
             # Step 2: Extract text using LangChain document loaders
             documents = await self.extract_text(file_info["file_path"], file_info["content_type"])
             
-            # Step 3: Create chunks (now working with Document objects)
-                       # Step 3: Create chunks with metadata
+            # Step 3: Create chunks with metadata
             chunks = self.create_chunks(documents, file_info["file_id"], file.filename)
             
             # Step 4: Generate embeddings
             embeddings = await self.generate_embeddings(chunks)
             
-            # Step 5: Index document
+            # Step 5: Index document in ChromaDB
             index_info = await self.index_document(file_info["file_id"], chunks, embeddings)
             
             # Calculate total text length from all documents
@@ -224,6 +229,33 @@ class DocumentProcessor:
             if 'file_info' in locals():
                 self.storage_service.delete_file(file_info["file_id"])
             raise
+    
+    def reset_application_data(self) -> Dict[str, Any]:
+        """Reset all application data - files and database"""
+        try:
+            # Reset ChromaDB
+            db_result = self.vector_store.reset_database()
+            
+            # Delete all uploaded files
+            import shutil
+            if os.path.exists(settings.UPLOAD_DIR):
+                shutil.rmtree(settings.UPLOAD_DIR)
+                os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+            
+            result = {
+                "database_reset": db_result,
+                "files_cleared": True,
+                "status": "success",
+                "message": "Application data has been completely reset"
+            }
+            
+            stage_logger.info(ProcessingStage.INDEXING, "Application data reset completed")
+            
+            return result
+            
+        except Exception as e:
+            stage_logger.error(ProcessingStage.FAILED, f"Application reset failed: {str(e)}")
+            raise Exception(f"Application reset failed: {str(e)}")
 
 # Global instance
 document_processor = DocumentProcessor()

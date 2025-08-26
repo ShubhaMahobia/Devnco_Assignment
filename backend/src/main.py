@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
-from src.routers import files, health, auth, qa
+from src.routers import files, health, auth, qa, database
 from config import settings
 from src.utils.logger import get_logger, log_system_event
 
@@ -32,6 +32,7 @@ app.include_router(health.router, prefix="/api/v1/health", tags=["Health"])
 app.include_router(files.router, prefix="/api/v1/files", tags=["File Management"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(qa.router, prefix="/api/v1/qa", tags=["Question & Answer"])
+app.include_router(database.router, prefix="/api/v1/database", tags=["Database Management"])
 
 # Global exception handler
 @app.exception_handler(Exception)

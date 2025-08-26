@@ -17,6 +17,10 @@ class Settings:
     EMBEDDING_DEVICE: str = "cpu"  # Use "cuda" if GPU is available
     NORMALIZE_EMBEDDINGS: bool = True  # Normalize embeddings for better similarity
     
+    # ChromaDB settings
+    CHROMA_DB_PATH: str = "storage/chromadb"  # ChromaDB persistent storage path
+    CHROMA_COLLECTION_NAME: str = "documents"  # Collection name for documents
+    
     # API settings
     API_TITLE: str = "RAG Application API"
     API_VERSION: str = "1.0.0"
@@ -28,8 +32,9 @@ class Settings:
     DEBUG: bool = True
     
     def __init__(self):
-        # Ensure upload directory exists
+        # Ensure directories exist
         os.makedirs(self.UPLOAD_DIR, exist_ok=True)
+        os.makedirs(self.CHROMA_DB_PATH, exist_ok=True)
 
 # Create global settings instance
 settings = Settings()
