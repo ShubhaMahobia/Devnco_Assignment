@@ -11,3 +11,4 @@ langchain
 unstructured
 docx2txt
 chromadb
+langchain_openai
