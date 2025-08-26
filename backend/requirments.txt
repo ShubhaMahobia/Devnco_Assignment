@@ -12,3 +12,5 @@ unstructured
 docx2txt
 chromadb
 langchain_openai
+sentence-transformers
+langchain-huggingface

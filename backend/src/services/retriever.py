@@ -12,6 +12,9 @@ from langchain.schema import Document
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManager
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from config import settings
 from src.services.storage import chroma_service
 from src.utils.logger import stage_logger, ProcessingStage

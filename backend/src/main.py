@@ -5,10 +5,10 @@ import uvicorn
 
 from src.routers import files, health, auth, qa, database
 from config import settings
-from src.utils.logger import get_logger, log_system_event
+from src.utils.logger import StageLogger, ProcessingStage
 
 # Initialize logger
-logger = get_logger("main")
+logger = StageLogger("main")
 
 # Create FastAPI app instance
 app = FastAPI(
@@ -37,7 +37,7 @@ app.include_router(database.router, prefix="/api/v1/database", tags=["Database M
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    logger.error(f"Unhandled exception: {str(exc)} | Path: {request.url.path}")
+    logger.error(ProcessingStage.FAILED, f"Unhandled exception: {str(exc)} | Path: {request.url.path}")
     return JSONResponse(
         status_code=500,
         content={"detail": f"Internal server error: {str(exc)}"}
@@ -54,15 +54,9 @@ async def root():
 
 def main():
     """Run the FastAPI application"""
-    log_system_event(
-        "startup",
-        "Starting FastAPI server",
-        metadata={
-            "host": settings.HOST,
-            "port": settings.PORT,
-            "debug": settings.DEBUG,
-            "version": settings.API_VERSION
-        }
+    logger.info(
+        ProcessingStage.UPLOADING,
+        f"Starting FastAPI server - Host: {settings.HOST}, Port: {settings.PORT}, Debug: {settings.DEBUG}, Version: {settings.API_VERSION}"
     )
     
     try:
@@ -73,9 +67,9 @@ def main():
             reload=settings.DEBUG
         )
     except KeyboardInterrupt:
-        log_system_event("shutdown", "Server stopped by user")
+        logger.info(ProcessingStage.UPLOADING, "Server stopped by user")
     except Exception as e:
-        log_system_event("error", f"Server startup failed: {str(e)}", level="ERROR")
+        logger.error(ProcessingStage.FAILED, f"Server startup failed: {str(e)}")
 
 if __name__ == "__main__":
     main()

@@ -5,7 +5,7 @@ from fastapi import UploadFile
 from pathlib import Path
 from datetime import datetime
 import uuid
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from langchain_community.document_loaders import (
     TextLoader,
