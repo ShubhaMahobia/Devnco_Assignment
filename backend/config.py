@@ -9,7 +9,18 @@ class Settings:
     MAX_FILE_SIZE_MB: int = 50  # Configurable max file size in MB
     MAX_FILE_SIZE_BYTES: int = MAX_FILE_SIZE_MB * 1024 * 1024  # Convert to bytes
     ALLOWED_FILE_TYPES: List[str] = [".pdf", ".docx", ".txt"]
-    UPLOAD_DIR: str = "storage/uploads"
+    UPLOAD_DIR: str = "storage/uploads"  # Local fallback directory
+    
+    # S3 storage settings
+    USE_S3_STORAGE: bool = True  # Enable S3 storage
+    S3_BUCKET_NAME: str = "my-rag-bucket-assignment"
+    S3_BUCKET_FOLDER: str = "storage"  # Folder within the bucket
+    S3_REGION: str = "ap-south-1"
+    S3_BASE_URL: str = f"https://{S3_BUCKET_NAME}.s3.{S3_REGION}.amazonaws.com/{S3_BUCKET_FOLDER}/"
+    
+    # AWS credentials (optional - can use IAM roles or AWS CLI config)
+    AWS_ACCESS_KEY_ID: str = os.getenv("AWS_ACCESS_KEY_ID", "")
+    AWS_SECRET_ACCESS_KEY: str = os.getenv("AWS_SECRET_ACCESS_KEY", "")
     
     # Document processing settings
     CHUNK_SIZE: int = 800  # Default chunk size for text splitting

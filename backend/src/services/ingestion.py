@@ -182,7 +182,23 @@ class DocumentProcessor:
             file_info = self.storage_service.save_file(file_content, file.filename)
             
             # Step 2: Extract text using LangChain document loaders
-            documents = await self.extract_text(file_info["file_path"], file_info["content_type"])
+            # For S3 files, get temporary local path for processing
+            storage_type = file_info.get("storage_type", "local")
+            
+            if storage_type == "s3":
+                processing_path = self.storage_service.get_file_path_for_processing(file_info["file_id"])
+            else:
+                processing_path = file_info["file_path"]
+            
+            documents = await self.extract_text(processing_path, file_info["content_type"])
+            
+            # Clean up temporary file if it was downloaded from S3
+            if file_info.get("storage_type") == "s3" and processing_path.startswith(os.path.join(settings.UPLOAD_DIR, "temp_")):
+                try:
+                    os.remove(processing_path)
+                    stage_logger.info(ProcessingStage.UPLOADING, f"Cleaned up temporary file: {processing_path}")
+                except Exception as cleanup_error:
+                    stage_logger.warning(ProcessingStage.UPLOADING, f"Failed to cleanup temp file: {cleanup_error}")
             
             # Step 3: Create chunks with metadata
             chunks = self.create_chunks(documents, file_info["file_id"], file.filename)
