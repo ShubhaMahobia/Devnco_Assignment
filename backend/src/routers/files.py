@@ -231,7 +231,7 @@ async def upload_file(file: UploadFile = File(...)):
             description="Get a list of all uploaded files")
 async def list_files():
     """
-    Get a list of all uploaded files in the storage directory.
+    Get a list of all uploaded files using metadata system.
     """
     try:
         files_info = []
@@ -240,36 +240,32 @@ async def list_files():
             logger.info("Upload directory does not exist")
             return files_info
         
-        for filename in os.listdir(settings.UPLOAD_DIR):
-            file_path = os.path.join(settings.UPLOAD_DIR, filename)
+        # Get all file metadata
+        from src.services.storage import file_storage_service
+        all_metadata = file_storage_service.get_all_files_metadata()
+        
+        for file_id, metadata in all_metadata.items():
+            unique_filename = metadata["unique_filename"]
+            file_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
             
+            # Check if file still exists on disk
             if os.path.isfile(file_path):
-                # Extract file info
-                file_stats = os.stat(file_path)
-                file_size = file_stats.st_size
-                upload_timestamp = datetime.fromtimestamp(file_stats.st_ctime)
-                
-                # Extract file ID from filename (assuming UUID format)
-                file_id = Path(filename).stem
-                
-                # Get original extension for content type
-                extension = get_file_extension(filename)
-                content_type_map = {
-                    '.txt': 'text/plain',
-                    '.pdf': 'application/pdf',
-                    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                }
-                content_type = content_type_map.get(extension, 'application/octet-stream')
-                
                 file_info = FileInfo(
                     file_id=file_id,
-                    filename=filename,
-                    file_size=file_size,
-                    content_type=content_type,
-                    upload_timestamp=upload_timestamp,
+                    filename=metadata["original_filename"],  # Use original filename
+                    file_size=metadata["file_size"],
+                    content_type=metadata["content_type"],
+                    upload_timestamp=datetime.fromisoformat(metadata["upload_timestamp"]),
                     file_path=file_path
                 )
                 files_info.append(file_info)
+            else:
+                # File is missing, clean up metadata
+                logger.warning(f"File {unique_filename} missing from disk, cleaning up metadata")
+                file_storage_service.delete_file_metadata(file_id)
+        
+        # Sort by upload timestamp (newest first)
+        files_info.sort(key=lambda x: x.upload_timestamp, reverse=True)
         
         logger.info(f"Listed {len(files_info)} files")
         return files_info
@@ -288,52 +284,44 @@ async def list_files():
             description="Get detailed information about an uploaded file")
 async def get_file_info(file_id: str):
     """
-    Get detailed information about an uploaded file.
+    Get detailed information about an uploaded file using metadata system.
     
     - **file_id**: The unique identifier of the file
     """
     try:
-        if not os.path.exists(settings.UPLOAD_DIR):
+        from src.services.storage import file_storage_service
+        
+        # Get file metadata
+        metadata = file_storage_service.get_file_metadata(file_id)
+        if not metadata:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="File not found"
             )
         
-        for filename in os.listdir(settings.UPLOAD_DIR):
-            if filename.startswith(file_id):
-                file_path = os.path.join(settings.UPLOAD_DIR, filename)
-                if os.path.isfile(file_path):
-                    # Get file stats
-                    file_stats = os.stat(file_path)
-                    file_size = file_stats.st_size
-                    upload_timestamp = datetime.fromtimestamp(file_stats.st_ctime)
-                    
-                    # Get content type
-                    extension = get_file_extension(filename)
-                    content_type_map = {
-                        '.txt': 'text/plain',
-                        '.pdf': 'application/pdf',
-                        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                    }
-                    content_type = content_type_map.get(extension, 'application/octet-stream')
-                    
-                    file_info = FileInfo(
-                        file_id=file_id,
-                        filename=filename,
-                        file_size=file_size,
-                        content_type=content_type,
-                        upload_timestamp=upload_timestamp,
-                        file_path=file_path
-                    )
-                    
-                    logger.info(f"Retrieved info for file: {file_id}")
-                    return file_info
+        unique_filename = metadata["unique_filename"]
+        file_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
         
-        logger.error(f"File not found: {file_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
+        # Check if file exists on disk
+        if not os.path.isfile(file_path):
+            # Clean up orphaned metadata
+            file_storage_service.delete_file_metadata(file_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+        
+        file_info = FileInfo(
+            file_id=file_id,
+            filename=metadata["original_filename"],  # Use original filename
+            file_size=metadata["file_size"],
+            content_type=metadata["content_type"],
+            upload_timestamp=datetime.fromisoformat(metadata["upload_timestamp"]),
+            file_path=file_path
         )
+        
+        logger.info(f"Retrieved info for file: {file_id}")
+        return file_info
         
     except HTTPException:
         raise
@@ -350,44 +338,41 @@ async def get_file_info(file_id: str):
             description="Download a file by its ID for viewing or saving")
 async def download_file(file_id: str):
     """
-    Download a file by its unique ID.
+    Download a file by its unique ID using metadata system.
     
     - **file_id**: The unique identifier of the file
     """
     try:
-        if not os.path.exists(settings.UPLOAD_DIR):
+        from src.services.storage import file_storage_service
+        
+        # Get file metadata
+        metadata = file_storage_service.get_file_metadata(file_id)
+        if not metadata:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="File not found"
             )
         
-        for filename in os.listdir(settings.UPLOAD_DIR):
-            if filename.startswith(file_id):
-                file_path = os.path.join(settings.UPLOAD_DIR, filename)
-                if os.path.isfile(file_path):
-                    # Get content type
-                    extension = get_file_extension(filename)
-                    content_type_map = {
-                        '.txt': 'text/plain',
-                        '.pdf': 'application/pdf',
-                        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                    }
-                    content_type = content_type_map.get(extension, 'application/octet-stream')
-                    
-                    logger.info(f"Serving file for download: {file_id}")
-                    
-                    # Return file response
-                    from fastapi.responses import FileResponse
-                    return FileResponse(
-                        path=file_path,
-                        media_type=content_type,
-                        filename=filename
-                    )
+        unique_filename = metadata["unique_filename"]
+        file_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
         
-        logger.error(f"File not found for download: {file_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
+        # Check if file exists on disk
+        if not os.path.isfile(file_path):
+            # Clean up orphaned metadata
+            file_storage_service.delete_file_metadata(file_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+        
+        logger.info(f"Serving file for download: {file_id} ({metadata['original_filename']})")
+        
+        # Return file response with original filename
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=file_path,
+            media_type=metadata["content_type"],
+            filename=metadata["original_filename"]  # Use original filename for download
         )
         
     except HTTPException:

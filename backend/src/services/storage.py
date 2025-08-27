@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+import json
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 from datetime import datetime
@@ -17,6 +18,56 @@ class FileStorageService:
     def __init__(self):
         # Ensure upload directory exists
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+        self.metadata_file = os.path.join(settings.UPLOAD_DIR, "file_metadata.json")
+        self._ensure_metadata_file()
+    
+    def _ensure_metadata_file(self):
+        """Ensure metadata file exists"""
+        if not os.path.exists(self.metadata_file):
+            with open(self.metadata_file, 'w') as f:
+                json.dump({}, f)
+    
+    def _load_metadata(self) -> Dict[str, Any]:
+        """Load file metadata"""
+        try:
+            with open(self.metadata_file, 'r') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+    
+    def _save_metadata(self, metadata: Dict[str, Any]):
+        """Save file metadata"""
+        with open(self.metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+    
+    def _add_file_metadata(self, file_id: str, original_filename: str, unique_filename: str, 
+                          file_size: int, content_type: str, upload_timestamp: str):
+        """Add metadata for a file"""
+        metadata = self._load_metadata()
+        metadata[file_id] = {
+            "original_filename": original_filename,
+            "unique_filename": unique_filename,
+            "file_size": file_size,
+            "content_type": content_type,
+            "upload_timestamp": upload_timestamp
+        }
+        self._save_metadata(metadata)
+    
+    def get_file_metadata(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """Get metadata for a specific file"""
+        metadata = self._load_metadata()
+        return metadata.get(file_id)
+    
+    def get_all_files_metadata(self) -> Dict[str, Any]:
+        """Get metadata for all files"""
+        return self._load_metadata()
+    
+    def delete_file_metadata(self, file_id: str):
+        """Delete metadata for a file"""
+        metadata = self._load_metadata()
+        if file_id in metadata:
+            del metadata[file_id]
+            self._save_metadata(metadata)
     
     def save_file(self, file_content: bytes, filename: str) -> Dict[str, Any]:
         """Save file to storage and return file information"""
@@ -39,6 +90,8 @@ class FileStorageService:
             }
             content_type = content_type_map.get(file_extension, 'application/octet-stream')
             
+            upload_timestamp = datetime.now().isoformat()
+            
             file_info = {
                 "file_id": file_id,
                 "filename": filename,
@@ -46,8 +99,18 @@ class FileStorageService:
                 "file_path": file_path,
                 "file_size": len(file_content),
                 "content_type": content_type,
-                "upload_timestamp": datetime.now().isoformat()
+                "upload_timestamp": upload_timestamp
             }
+            
+            # Store metadata
+            self._add_file_metadata(
+                file_id=file_id,
+                original_filename=filename,
+                unique_filename=unique_filename,
+                file_size=len(file_content),
+                content_type=content_type,
+                upload_timestamp=upload_timestamp
+            )
             
             stage_logger.info(ProcessingStage.UPLOADING, 
                             f"File saved: {filename} -> {unique_filename}")
@@ -58,15 +121,29 @@ class FileStorageService:
             raise
     
     def delete_file(self, file_id: str) -> bool:
-        """Delete file from storage"""
+        """Delete file from storage and metadata"""
         try:
-            # Find file by ID
-            for filename in os.listdir(settings.UPLOAD_DIR):
-                if filename.startswith(file_id):
-                    file_path = os.path.join(settings.UPLOAD_DIR, filename)
+            # Get metadata first to find the unique filename
+            metadata = self.get_file_metadata(file_id)
+            if metadata:
+                unique_filename = metadata["unique_filename"]
+                file_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
+                
+                if os.path.exists(file_path):
                     os.remove(file_path)
-                    stage_logger.info(ProcessingStage.UPLOADING, f"Deleted file: {filename}")
-                    return True
+                    stage_logger.info(ProcessingStage.UPLOADING, f"Deleted file: {unique_filename}")
+                
+                # Remove metadata
+                self.delete_file_metadata(file_id)
+                return True
+            else:
+                # Fallback: try to find file by ID prefix (for legacy files)
+                for filename in os.listdir(settings.UPLOAD_DIR):
+                    if filename.startswith(file_id) and filename != "file_metadata.json":
+                        file_path = os.path.join(settings.UPLOAD_DIR, filename)
+                        os.remove(file_path)
+                        stage_logger.info(ProcessingStage.UPLOADING, f"Deleted legacy file: {filename}")
+                        return True
             return False
         except Exception as e:
             stage_logger.error(ProcessingStage.UPLOADING, f"Failed to delete file: {str(e)}")
