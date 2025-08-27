@@ -6,34 +6,45 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage
 from langchain_core.documents import Document
+from src.utils.logger import stage_logger, ProcessingStage
 
 async def retrieve_and_generate(question_request: QuestionRequest) -> QuestionResponse:
     """
     Full RAG function to process a user query, fetch relevant data, and generate a response using LLM.
     """
+    stage_logger.info(ProcessingStage.EXTRACTING, "Starting RAG process for query: {question_request.query}")
+
     # Initialize document processor
     document_processor = DocumentProcessor()
 
     # Step 1: Embed the user query
     query_document = Document(page_content=question_request.query)
     query_embedding = await document_processor.generate_embeddings([query_document])
+    stage_logger.info(ProcessingStage.EMBEDDING, "Generated embeddings for query.")
 
     # Step 2: Fetch relevant data from vector storage
     search_results = await chroma_service.search_similar_documents(query_embedding[0], n_results=question_request.k)
     relevant_docs = [Document(page_content=doc, metadata=meta) for doc, meta in zip(search_results['documents'], search_results['metadatas'])]
+    stage_logger.info(ProcessingStage.INDEXING, f"Retrieved {len(relevant_docs)} relevant documents.")
 
     # Step 3: Create context with fetched documents and query
     context = question_request.query + "\n" + "\n".join([doc.page_content for doc in relevant_docs])
+    stage_logger.info(ProcessingStage.CHUNKING, "Created context for LLM.")
 
     # Step 4: Pass context to LLM (GPT-4o mini)
     response_text = await generate_response(context)
+    stage_logger.info(ProcessingStage.EXTRACTING, "Generated response from LLM.")
 
     # Step 5: Return the result
+    unique_sources = list(set(doc.metadata.get('doc_name', 'Unknown source') for doc in relevant_docs))
+    unique_citations = list(set(doc.metadata.get('citation', 'No citation available') for doc in relevant_docs))
+
+    stage_logger.info(ProcessingStage.INDEXING, "RAG process completed.")
     return QuestionResponse(
         answer=response_text,
         query=question_request.query,
-        sources=[doc.metadata.get('source', 'Unknown source') for doc in relevant_docs],
-        citations=[doc.metadata.get('citation', 'No citation available') for doc in relevant_docs],
+        sources=unique_sources,
+        citations=unique_citations,
         retrieved_documents=len(relevant_docs),
         context_used=len(context.split()),
         timestamp=datetime.now().isoformat()

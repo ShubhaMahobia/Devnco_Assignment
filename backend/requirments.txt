@@ -14,3 +14,4 @@ chromadb
 langchain_openai
 sentence-transformers
 langchain-huggingface
+sse-starlette
