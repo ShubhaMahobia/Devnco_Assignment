@@ -10,7 +10,6 @@ from fastapi.responses import JSONResponse
 
 from config import settings
 from src.schemas.file_upload import FileUploadResponse, FileInfo, UploadError
-from src.services.storage import file_storage_service
 from src.services.ingestion import document_processor
 from src.utils.logger import ProcessingStage, stage_logger
 
