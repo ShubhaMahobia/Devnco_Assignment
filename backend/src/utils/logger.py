@@ -4,6 +4,9 @@ from logging.handlers import RotatingFileHandler
 from from_root import from_root
 from datetime import datetime
 from enum import Enum
+from contextlib import contextmanager
+import time
+
 
 # Constants for log configuration
 LOG_DIR = 'logs'
@@ -56,6 +59,7 @@ class StageLogger:
     
     def __init__(self, logger_name: str = __name__):
         self.logger = logging.getLogger(logger_name)
+        self.timing_data = {}  # Store timing information
     
     def _log_with_stage(self, level: int, stage: ProcessingStage, message: str, *args, **kwargs):
         """
@@ -63,6 +67,41 @@ class StageLogger:
         """
         stage_message = f"[{stage.value}] {message}"
         self.logger.log(level, stage_message, *args, **kwargs)
+    
+    @contextmanager
+    def time_stage(self, stage: ProcessingStage, operation: str):
+        """
+        Context manager for timing and logging stage operations.
+        """
+        start_time = time.time()
+        self.info(stage, f"Starting {operation}")
+        try:
+            yield
+            duration = time.time() - start_time
+            self.timing_data[f"{stage.value}_{operation}"] = duration
+            self.info(stage, f"Completed {operation} in {duration:.2f}s")
+        except Exception as e:
+            duration = time.time() - start_time
+            self.timing_data[f"{stage.value}_{operation}"] = duration
+            self.error(stage, f"Failed {operation} after {duration:.2f}s: {str(e)}")
+            raise
+    
+    def log_timing_summary(self):
+        """
+        Log a summary of all timing data collected.
+        """
+        if not self.timing_data:
+            self.info(ProcessingStage.INDEXING, "No timing data available")
+            return
+        
+        total_time = sum(self.timing_data.values())
+        self.info(ProcessingStage.INDEXING, f"=== PROCESSING TIMING SUMMARY ===")
+        for operation, duration in self.timing_data.items():
+            self.info(ProcessingStage.INDEXING, f"{operation}: {duration:.2f}s")
+        self.info(ProcessingStage.INDEXING, f"TOTAL PROCESSING TIME: {total_time:.2f}s")
+        
+        # Clear timing data after logging
+        self.timing_data.clear()
     
     def info(self, stage: ProcessingStage, message: str, *args, **kwargs):
         """Log info message with stage information."""

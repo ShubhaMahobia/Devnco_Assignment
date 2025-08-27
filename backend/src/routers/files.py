@@ -12,7 +12,7 @@ from config import settings
 from src.schemas.file_upload import FileUploadResponse, FileInfo, UploadError
 from src.services.storage import file_storage_service
 from src.services.ingestion import document_processor
-from src.utils.logger import stage_logger, ProcessingStage
+from src.utils.logger import ProcessingStage, stage_logger
 
 # For now, we'll create a simple logger since the enhanced one might not be implemented yet
 import logging
@@ -42,40 +42,33 @@ def generate_unique_filename(original_filename: str) -> tuple[str, str]:
 @router.post("/upload", 
              response_model=FileUploadResponse,
              status_code=status.HTTP_201_CREATED,
-             summary="Upload a file",
-             description="Upload a text, PDF, or DOCX file to the server")
+             summary="Upload and process a file",
+             description="Upload a text, PDF, or DOCX file to the server and start processing pipeline")
 async def upload_file(file: UploadFile = File(...)):
     """
-    Upload a file (text, PDF, or DOCX) to the server.
+    Upload a file (text, PDF, or DOCX) to the server and automatically start processing.
     
     - **file**: The file to upload (supported formats: .txt, .pdf, .docx)
-    - Returns file information including unique file ID and storage path
+    - Returns file information and processing status
     """
     
-    # Validate file is provided
-    if not file:
-        logger.error("No file provided in request")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No file provided"
-        )
     
     # Validate filename
     if not file.filename:
-        logger.error("No filename provided")
+        stage_logger.error(ProcessingStage.UPLOADING, "No filename provided")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No filename provided"
         )
     
     try:
-        logger.info(f"Starting file upload validation for: {file.filename}")
+        stage_logger.info(ProcessingStage.UPLOADING, f"Starting file upload validation for: {file.filename}")
         
         # Check file type
         if not is_allowed_file_type(file.filename):
             allowed_types = ", ".join(settings.ALLOWED_FILE_TYPES)
             error_msg = f"File type not allowed. Supported types: {allowed_types}"
-            logger.error(error_msg)
+            stage_logger.error(ProcessingStage.UPLOADING, error_msg)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_msg
@@ -88,7 +81,7 @@ async def upload_file(file: UploadFile = File(...)):
         # Check file size
         if file_size > settings.MAX_FILE_SIZE_BYTES:
             error_msg = f"File too large. Maximum size: {settings.MAX_FILE_SIZE_MB}MB"
-            logger.error(f"{error_msg}. Received: {file_size / (1024*1024):.2f}MB")
+            stage_logger.error(ProcessingStage.UPLOADING, f"{error_msg}. Received: {file_size / (1024*1024):.2f}MB")
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=error_msg
@@ -96,44 +89,58 @@ async def upload_file(file: UploadFile = File(...)):
         
         # Validate file is not empty
         if file_size == 0:
-            logger.error("Empty file provided")
+            stage_logger.error(ProcessingStage.UPLOADING, "Empty file provided")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File is empty"
             )
         
-        logger.info(f"File validation passed for: {file.filename} ({file_size} bytes)")
+        stage_logger.info(ProcessingStage.UPLOADING, f"File validation passed for: {file.filename} ({file_size} bytes)")
         
-        # Generate unique filename and file ID
-        file_id, unique_filename = generate_unique_filename(file.filename)
-        file_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
+        # Reset file pointer for processing
+        await file.seek(0)
         
-        # Save file to storage
-        logger.info(f"Saving file to: {file_path}")
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
+        # Start the complete processing pipeline
+        stage_logger.info(ProcessingStage.UPLOADING, f"Starting document processing pipeline for: {file.filename}")
         
-        logger.info(f"Successfully saved file: {file.filename} -> {unique_filename}")
-        
-        # Create response
-        response = FileUploadResponse(
-            file_id=file_id,
-            filename=file.filename,
-            file_path=file_path,
-            file_size=file_size,
-            content_type=file.content_type or "application/octet-stream",
-            status="uploaded"
-        )
-        
-        logger.info(f"File upload completed: {file.filename} ({file_size} bytes)")
-        return response
+        try:
+            # Process the document through the complete pipeline
+            processing_result = await document_processor.process_document(file)
+            
+            # Create enhanced response with processing information
+            response = FileUploadResponse(
+                file_id=processing_result["file_info"]["file_id"],
+                filename=file.filename,
+                file_path=processing_result["file_info"]["file_path"],
+                file_size=file_size,
+                content_type=processing_result["file_info"]["content_type"],
+                status="processed"  # Changed from "uploaded" to "processed"
+            )
+            
+            stage_logger.info(ProcessingStage.INDEXING, 
+                            f"File upload and processing completed successfully: {file.filename} "
+                            f"({processing_result['processing_stats']['chunks_count']} chunks indexed)")
+            
+            return response
+            
+        except Exception as processing_error:
+            # If processing fails, still return upload success but with failed status
+            stage_logger.error(ProcessingStage.FAILED, 
+                             f"Document processing failed for {file.filename}: {str(processing_error)}")
+            
+            # For now, we'll raise the error. You could alternatively save the file 
+            # and return a "uploaded_but_processing_failed" status
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"File uploaded but processing failed: {str(processing_error)}"
+            )
         
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
         # Handle unexpected errors
-        logger.error(f"Unexpected error during upload: {str(e)}")
+        stage_logger.error(ProcessingStage.FAILED, f"Unexpected error during upload: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error during file upload: {str(e)}"
@@ -256,36 +263,4 @@ async def get_file_info(file_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving file information: {str(e)}"
-        )
-
-@router.post("/process", 
-             response_model=Dict[str, Any],
-             status_code=status.HTTP_201_CREATED)
-async def process_document(file: UploadFile = File(...)):
-
-    # Validate file is provided
-    if not file or not file.filename:
-        stage_logger.error(ProcessingStage.FAILED, "No file provided in request")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No file provided"
-        )
-    
-    try:
-        result = await document_processor.process_document(file)
-        return result
-        
-    except ValueError as e:
-        # Validation errors
-        stage_logger.error(ProcessingStage.FAILED, f"Validation error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        # Unexpected errors
-        stage_logger.error(ProcessingStage.FAILED, f"Unexpected error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error during document processing: {str(e)}"
         )
