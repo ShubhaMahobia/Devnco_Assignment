@@ -27,7 +27,15 @@ class Settings:
     CHUNK_OVERLAP: int = 175  # Default overlap between chunks (150-200 range)
     
     # Embedding settings
-    EMBEDDING_MODEL: str = "BAAI/bge-base-en-v1.5"  # BGE embedding model
+    USE_OPENAI_EMBEDDINGS: bool = True  # Use OpenAI embeddings instead of local model
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"  # OpenAI embedding model
+    # Available OpenAI models:
+    # - text-embedding-3-small: 1536 dimensions, $0.00002/1K tokens (recommended)
+    # - text-embedding-3-large: 3072 dimensions, $0.00013/1K tokens (higher quality)
+    # - text-embedding-ada-002: 1536 dimensions, $0.0001/1K tokens (legacy)
+    
+    # Legacy local embedding settings (kept for fallback)
+    LOCAL_EMBEDDING_MODEL: str = "BAAI/bge-base-en-v1.5"  # BGE embedding model (768 dimensions)
     EMBEDDING_DEVICE: str = "cpu"  # Use "cuda" if GPU is available
     NORMALIZE_EMBEDDINGS: bool = True  # Normalize embeddings for better similarity
     

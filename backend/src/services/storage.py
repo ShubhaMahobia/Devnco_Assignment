@@ -501,7 +501,12 @@ class ChromaDBService:
                 allow_reset=True
             )
         )
-        self.collection_name = settings.CHROMA_COLLECTION_NAME
+        # Use different collection names for different embedding models
+        if settings.USE_OPENAI_EMBEDDINGS:
+            self.collection_name = f"{settings.CHROMA_COLLECTION_NAME}_openai_{settings.OPENAI_EMBEDDING_MODEL.replace('-', '_')}"
+        else:
+            self.collection_name = f"{settings.CHROMA_COLLECTION_NAME}_local_{settings.LOCAL_EMBEDDING_MODEL.replace('/', '_').replace('-', '_')}"
+        
         self._ensure_collection()
     
     def _ensure_collection(self):
@@ -571,9 +576,24 @@ class ChromaDBService:
             return result
             
         except Exception as e:
+            error_msg = str(e)
             stage_logger.error(ProcessingStage.INDEXING, 
-                             f"Failed to index documents in ChromaDB: {str(e)}")
-            raise Exception(f"ChromaDB indexing failed: {str(e)}")
+                             f"Failed to index documents in ChromaDB: {error_msg}")
+            
+            # Check for dimension mismatch error
+            if "expecting embedding with dimension" in error_msg:
+                stage_logger.error(ProcessingStage.INDEXING, 
+                                 "Embedding dimension mismatch detected. This usually happens when switching between embedding models.")
+                stage_logger.info(ProcessingStage.INDEXING, 
+                                f"Current collection: {self.collection_name}")
+                stage_logger.info(ProcessingStage.INDEXING, 
+                                "Consider resetting the database or using a different collection name.")
+                
+                raise Exception(f"Embedding dimension mismatch: {error_msg}. "
+                              "Please reset the database to use the new embedding model, "
+                              "or switch back to the previous embedding model.")
+            
+            raise Exception(f"ChromaDB indexing failed: {error_msg}")
     
     async def search_similar_documents(self, query_embedding: List[float], n_results: int = 5, 
                                      file_id: Optional[str] = None) -> Dict[str, Any]:
