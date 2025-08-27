@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import ChatInterface from './ChatInterface';
 
-// Set up PDF.js worker - use local worker from public directory
+// Set up PDF.js worker - use local worker from public directory (correct version)
 pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
 
 const PDFViewer = ({ selectedFile }) => {
@@ -10,6 +10,7 @@ const PDFViewer = ({ selectedFile }) => {
   const [pageNumber, setPageNumber] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [currentView, setCurrentView] = useState('pdf'); // 'pdf' or 'chat'
 
   const onDocumentLoadSuccess = useCallback(({ numPages }) => {
     setNumPages(numPages);
@@ -186,21 +187,52 @@ const PDFViewer = ({ selectedFile }) => {
   return (
     <div className="main-content">
       <div className="content-header">
-        <h1 className="content-title">
-          {selectedFile ? selectedFile.filename : 'Document Viewer'}
-        </h1>
-        <p className="content-subtitle">
-          {selectedFile 
-            ? `${selectedFile.content_type} • ${(selectedFile.file_size / 1024).toFixed(1)} KB`
-            : 'Select a document to view'
-          }
-        </p>
+        <div className="content-info">
+          <h1 className="content-title">
+            {selectedFile ? selectedFile.filename : 'Document Viewer'}
+          </h1>
+          <p className="content-subtitle">
+            {selectedFile 
+              ? `${selectedFile.content_type} • ${(selectedFile.file_size / 1024).toFixed(1)} KB`
+              : 'Select a document to view'
+            }
+          </p>
+        </div>
+        
+        {/* Toggle Buttons - only show when file is selected */}
+        {selectedFile && (
+          <div className="view-toggle">
+            <button
+              className={`toggle-button ${currentView === 'pdf' ? 'active' : ''}`}
+              onClick={() => setCurrentView('pdf')}
+              title="View PDF Document"
+            >
+              📄 Document
+            </button>
+            <button
+              className={`toggle-button ${currentView === 'chat' ? 'active' : ''}`}
+              onClick={() => setCurrentView('chat')}
+              title="Ask Questions"
+            >
+              💬 Chat
+            </button>
+          </div>
+        )}
       </div>
       
-      {renderContent()}
-      
-      {/* Chat Interface below PDF viewer */}
-      <ChatInterface selectedFile={selectedFile} />
+      {/* Conditional Rendering based on current view */}
+      {currentView === 'pdf' ? (
+        <div className="pdf-view-container">
+          {renderContent()}
+        </div>
+      ) : (
+        <div className="chat-view-container">
+          <ChatInterface 
+            selectedFile={selectedFile} 
+            onViewChange={setCurrentView}
+          />
+        </div>
+      )}
     </div>
   );
 };

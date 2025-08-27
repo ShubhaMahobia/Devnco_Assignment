@@ -33,7 +33,7 @@ class Settings:
     # RAG settings
     DEFAULT_RETRIEVAL_K: int = 5  # Default number of documents to retrieve
     MAX_RETRIEVAL_K: int = 20  # Maximum number of documents to retrieve
-    MIN_SIMILARITY_THRESHOLD: float = 0.0  # Minimum similarity threshold for retrieval
+    MIN_SIMILARITY_THRESHOLD: float = 0.5  # Minimum similarity threshold for retrieval
     
     # API settings
     API_TITLE: str = "RAG Application API"

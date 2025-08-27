@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { qaAPI } from '../services/api';
 
-const ChatInterface = ({ selectedFile }) => {
+const ChatInterface = ({ selectedFile, onViewChange }) => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -10,7 +10,7 @@ const ChatInterface = ({ selectedFile }) => {
   const inputRef = useRef(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: g 'smooth' });
   };
 
   useEffect(() => {
@@ -22,13 +22,13 @@ const ChatInterface = ({ selectedFile }) => {
     if (selectedFile) {
       setMessages([{
         type: 'system',
-        content: `Ready to answer questions about "${selectedFile.filename}". Ask me anything!`,
+        content: `Ready to answer questions about all documents in the database. You can ask about "${selectedFile.filename}" or any other document. Ask me anything!`,
         timestamp: new Date().toISOString()
       }]);
     } else {
       setMessages([{
         type: 'system',
-        content: 'Select a document to start asking questions about it.',
+        content: 'Select a document to start asking questions about all documents in the database.',
         timestamp: new Date().toISOString()
       }]);
     }
@@ -142,13 +142,13 @@ const ChatInterface = ({ selectedFile }) => {
     if (selectedFile) {
       setMessages([{
         type: 'system',
-        content: `Ready to answer questions about "${selectedFile.filename}". Ask me anything!`,
+        content: `Ready to answer questions about all documents in the database. You can ask about "${selectedFile.filename}" or any other document. Ask me anything!`,
         timestamp: new Date().toISOString()
       }]);
     } else {
       setMessages([{
         type: 'system',
-        content: 'Select a document to start asking questions about it.',
+        content: 'Select a document to start asking questions about all documents in the database.',
         timestamp: new Date().toISOString()
       }]);
     }
@@ -164,13 +164,24 @@ const ChatInterface = ({ selectedFile }) => {
             <p className="chat-subtitle">About: {selectedFile.filename}</p>
           )}
         </div>
-        <button 
-          className="clear-chat-button" 
-          onClick={clearChat}
-          title="Clear conversation"
-        >
-          🗑️
-        </button>
+        <div className="chat-header-actions">
+          {onViewChange && (
+            <button 
+              className="view-switch-button" 
+              onClick={() => onViewChange('pdf')}
+              title="Switch to PDF view"
+            >
+              📄
+            </button>
+          )}
+          <button 
+            className="clear-chat-button" 
+            onClick={clearChat}
+            title="Clear conversation"
+          >
+            🗑️
+          </button>
+        </div>
       </div>
 
       <div className="chat-messages">
@@ -241,7 +252,7 @@ const ChatInterface = ({ selectedFile }) => {
             onKeyPress={handleKeyPress}
             placeholder={
               selectedFile 
-                ? `Ask a question about ${selectedFile.filename}...`
+                ? "Ask any question about all documents in the database..."
                 : "Select a document first to ask questions..."
             }
             disabled={!selectedFile || isLoading}
@@ -263,7 +274,7 @@ const ChatInterface = ({ selectedFile }) => {
         
         {selectedFile && (
           <div className="chat-help">
-            💡 Try asking: "What is this document about?", "Summarize the key points", or ask specific questions about the content.
+            💡 Ask any question among all the documents present in the database. Try: "What topics are covered?", "Compare information across documents", or ask specific questions about any content.
           </div>
         )}
       </div>
@@ -272,3 +283,4 @@ const ChatInterface = ({ selectedFile }) => {
 };
 
 export default ChatInterface;
+

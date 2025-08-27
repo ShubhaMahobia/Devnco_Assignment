@@ -205,6 +205,13 @@ body {
   padding: 20px;
   border-bottom: 1px solid #e1e5e9;
   background-color: #f8f9fa;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.content-info {
+  flex: 1;
 }
 
 .content-title {
@@ -217,6 +224,47 @@ body {
 .content-subtitle {
   color: #7f8c8d;
   font-size: 14px;
+}
+
+/* View Toggle Styles */
+.view-toggle {
+  display: flex;
+  background-color: #e9ecef;
+  border-radius: 8px;
+  padding: 4px;
+  gap: 2px;
+}
+
+.toggle-button {
+  background-color: transparent;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+  justify-content: center;
+}
+
+.toggle-button:hover {
+  background-color: #dee2e6;
+  color: #495057;
+}
+
+.toggle-button.active {
+  background-color: #3498db;
+  color: white;
+  box-shadow: 0 2px 4px rgba(52, 152, 219, 0.2);
+}
+
+.toggle-button.active:hover {
+  background-color: #2980b9;
 }
 
 /* PDF Viewer Styles */
@@ -786,16 +834,40 @@ body {
   }
 }
 
+/* View Container Styles */
+.pdf-view-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: fadeInView 0.3s ease-in-out;
+}
+
+.chat-view-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: fadeInView 0.3s ease-in-out;
+}
+
+@keyframes fadeInView {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Chat Interface Styles */
 .chat-interface {
-  border-top: 1px solid #e1e5e9;
   background-color: #ffffff;
   display: flex;
   flex-direction: column;
-  height: 400px;
-  min-height: 300px;
-  max-height: 600px;
-  resize: vertical;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -822,6 +894,13 @@ body {
   font-weight: normal;
 }
 
+.chat-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.view-switch-button,
 .clear-chat-button {
   background: none;
   border: none;
@@ -832,8 +911,17 @@ body {
   transition: background-color 0.3s ease;
 }
 
+.view-switch-button:hover,
 .clear-chat-button:hover {
   background-color: #e9ecef;
+}
+
+.view-switch-button {
+  color: #3498db;
+}
+
+.view-switch-button:hover {
+  background-color: #e3f2fd;
 }
 
 /* Chat Messages */
@@ -1130,11 +1218,23 @@ body {
   background: #a8a8a8;
 }
 
-/* Responsive Design for Chat */
+/* Responsive Design for Toggle and Chat */
 @media (max-width: 768px) {
-  .chat-interface {
-    height: 300px;
-    min-height: 250px;
+  .content-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-start;
+  }
+  
+  .view-toggle {
+    align-self: stretch;
+  }
+  
+  .toggle-button {
+    min-width: auto;
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 13px;
   }
   
   .chat-header {
@@ -1160,5 +1260,185 @@ body {
   
   .chat-help {
     font-size: 11px;
+  }
+}
+
+/* Sidebar Progress Indicator Styles */
+.sidebar-progress {
+  margin: 10px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  font-size: 12px;
+  animation: slideInProgress 0.3s ease-out;
+}
+
+.sidebar-progress-header {
+  margin-bottom: 12px;
+}
+
+.sidebar-progress-title {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+
+.sidebar-progress-filename {
+  color: #7f8c8d;
+  font-size: 11px;
+  word-break: break-word;
+  line-height: 1.3;
+}
+
+.sidebar-progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #ecf0f1;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.sidebar-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3498db, #2ecc71);
+  border-radius: 3px;
+  transition: width 0.5s ease-in-out;
+  position: relative;
+}
+
+.sidebar-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: shimmer 2s infinite;
+}
+
+.sidebar-progress-percentage {
+  text-align: center;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.sidebar-current-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px;
+  background-color: #ffffff;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.current-stage-icon {
+  font-size: 14px;
+  min-width: 16px;
+}
+
+.current-stage-text {
+  flex: 1;
+  color: #495057;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.sidebar-stage-dots {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 0 4px;
+}
+
+.stage-dot {
+  font-size: 10px;
+  transition: all 0.3s ease;
+  cursor: help;
+}
+
+.stage-dot.pending {
+  color: #ced4da;
+}
+
+.stage-dot.active {
+  color: #3498db;
+  animation: pulse 2s infinite;
+}
+
+.stage-dot.completed {
+  color: #27ae60;
+}
+
+.stage-dot.failed {
+  color: #e74c3c;
+}
+
+.sidebar-success-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 6px;
+}
+
+.success-stat {
+  color: #155724;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-error {
+  padding: 8px;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 6px;
+  color: #721c24;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+@keyframes slideInProgress {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile responsive for sidebar progress */
+@media (max-width: 768px) {
+  .sidebar-progress {
+    margin: 8px;
+    padding: 12px;
+  }
+  
+  .sidebar-progress-title {
+    font-size: 11px;
+  }
+  
+  .sidebar-progress-filename {
+    font-size: 10px;
+  }
+  
+  .sidebar-current-stage {
+    padding: 6px;
+  }
+  
+  .current-stage-text {
+    font-size: 10px;
   }
 }
