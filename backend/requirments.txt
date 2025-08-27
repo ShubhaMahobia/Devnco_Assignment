@@ -12,8 +12,5 @@ unstructured
 docx2txt
 chromadb
 langchain_openai
-# Local embedding dependencies (optional - for fallback only)
-sentence-transformers
-langchain-huggingface
 sse-starlette
 boto3>=1.34.0

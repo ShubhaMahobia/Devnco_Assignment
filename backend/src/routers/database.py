@@ -45,22 +45,20 @@ async def get_embedding_info():
     """
     try:
         embedding_info = {
-            "current_model": "OpenAI" if settings.USE_OPENAI_EMBEDDINGS else "Local HuggingFace",
-            "openai_model": settings.OPENAI_EMBEDDING_MODEL if settings.USE_OPENAI_EMBEDDINGS else None,
-            "local_model": settings.LOCAL_EMBEDDING_MODEL if not settings.USE_OPENAI_EMBEDDINGS else None,
+            "current_model": "OpenAI",
+            "openai_model": settings.OPENAI_EMBEDDING_MODEL,
             "openai_api_key_configured": bool(settings.OPENAI_API_KEY),
-            "use_openai_embeddings": settings.USE_OPENAI_EMBEDDINGS,
             "embedding_dimensions": {
                 "text-embedding-3-small": 1536,
                 "text-embedding-3-large": 3072, 
-                "text-embedding-ada-002": 1536,
-                "BAAI/bge-base-en-v1.5": 768
+                "text-embedding-ada-002": 1536
             },
             "cost_per_1k_tokens": {
                 "text-embedding-3-small": "$0.00002",
                 "text-embedding-3-large": "$0.00013",
                 "text-embedding-ada-002": "$0.0001"
             },
+            "current_model_dimensions": 1536 if settings.OPENAI_EMBEDDING_MODEL == "text-embedding-3-small" else 3072 if settings.OPENAI_EMBEDDING_MODEL == "text-embedding-3-large" else 1536,
             "recommendation": "text-embedding-3-small is recommended for best cost/performance ratio"
         }
         
@@ -91,16 +89,14 @@ async def get_collection_info():
         
         # Add embedding model info
         collection_info.update({
-            "current_embedding_model": "OpenAI" if settings.USE_OPENAI_EMBEDDINGS else "Local HuggingFace",
+            "current_embedding_model": "OpenAI",
             "expected_dimensions": {
                 "text-embedding-3-small": 1536,
                 "text-embedding-3-large": 3072,
-                "text-embedding-ada-002": 1536,
-                "BAAI/bge-base-en-v1.5": 768
+                "text-embedding-ada-002": 1536
             },
-            "current_model_dimensions": 1536 if settings.USE_OPENAI_EMBEDDINGS else 768,
-            "openai_model": settings.OPENAI_EMBEDDING_MODEL if settings.USE_OPENAI_EMBEDDINGS else None,
-            "local_model": settings.LOCAL_EMBEDDING_MODEL if not settings.USE_OPENAI_EMBEDDINGS else None
+            "current_model_dimensions": 1536 if settings.OPENAI_EMBEDDING_MODEL == "text-embedding-3-small" else 3072 if settings.OPENAI_EMBEDDING_MODEL == "text-embedding-3-large" else 1536,
+            "openai_model": settings.OPENAI_EMBEDDING_MODEL
         })
         
         return JSONResponse(

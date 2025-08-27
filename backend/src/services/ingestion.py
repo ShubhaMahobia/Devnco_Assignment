@@ -1,11 +1,9 @@
-import asyncio
 import os
 from typing import Dict, Any, List, Optional
 from fastapi import UploadFile
 from pathlib import Path
 from datetime import datetime
 import uuid
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
 from langchain_community.document_loaders import (
@@ -129,40 +127,22 @@ class DocumentProcessor:
             return all_chunks
     
     async def generate_embeddings(self, chunks: List[Document]) -> List[List[float]]:
-        """Generate embeddings for document chunks using OpenAI or local model"""
+        """Generate embeddings for document chunks using OpenAI"""
         with stage_logger.time_stage(ProcessingStage.EMBEDDING, f"embed_{len(chunks)}_chunks"): 
             try:
                 texts = [chunk.page_content for chunk in chunks]
                 
-                if settings.USE_OPENAI_EMBEDDINGS:
-                    # Use OpenAI embeddings
-                    embeddings_model = OpenAIEmbeddings(
-                        model=settings.OPENAI_EMBEDDING_MODEL,
-                        openai_api_key=settings.OPENAI_API_KEY
-                    )
-                    
-                    # Generate embeddings for all chunks
-                    embeddings = await embeddings_model.aembed_documents(texts)
-                    
-                    stage_logger.info(ProcessingStage.EMBEDDING, 
-                                    f"Generated embeddings for {len(chunks)} chunks using OpenAI {settings.OPENAI_EMBEDDING_MODEL}")
-                else:
-                    # Fallback to local HuggingFace embeddings
-                    embeddings_model = HuggingFaceEmbeddings(
-                        model_name=settings.LOCAL_EMBEDDING_MODEL,
-                        model_kwargs={'device': settings.EMBEDDING_DEVICE},
-                        encode_kwargs={'normalize_embeddings': settings.NORMALIZE_EMBEDDINGS}
-                    )
-                    
-                    # Generate embeddings for all chunks
-                    embeddings = await asyncio.get_event_loop().run_in_executor(
-                        None, 
-                        embeddings_model.embed_documents,
-                        texts
-                    )
-                    
-                    stage_logger.info(ProcessingStage.EMBEDDING, 
-                                    f"Generated embeddings for {len(chunks)} chunks using local {settings.LOCAL_EMBEDDING_MODEL}")
+                # Use OpenAI embeddings
+                embeddings_model = OpenAIEmbeddings(
+                    model=settings.OPENAI_EMBEDDING_MODEL,
+                    openai_api_key=settings.OPENAI_API_KEY
+                )
+                
+                # Generate embeddings for all chunks
+                embeddings = await embeddings_model.aembed_documents(texts)
+                
+                stage_logger.info(ProcessingStage.EMBEDDING, 
+                                f"Generated embeddings for {len(chunks)} chunks using OpenAI {settings.OPENAI_EMBEDDING_MODEL}")
                 
                 return embeddings
                 

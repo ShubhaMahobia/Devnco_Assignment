@@ -501,11 +501,8 @@ class ChromaDBService:
                 allow_reset=True
             )
         )
-        # Use different collection names for different embedding models
-        if settings.USE_OPENAI_EMBEDDINGS:
-            self.collection_name = f"{settings.CHROMA_COLLECTION_NAME}_openai_{settings.OPENAI_EMBEDDING_MODEL.replace('-', '_')}"
-        else:
-            self.collection_name = f"{settings.CHROMA_COLLECTION_NAME}_local_{settings.LOCAL_EMBEDDING_MODEL.replace('/', '_').replace('-', '_')}"
+        # Use collection name with OpenAI model identifier
+        self.collection_name = f"{settings.CHROMA_COLLECTION_NAME}_openai_{settings.OPENAI_EMBEDDING_MODEL.replace('-', '_')}"
         
         self._ensure_collection()
     
@@ -590,8 +587,7 @@ class ChromaDBService:
                                 "Consider resetting the database or using a different collection name.")
                 
                 raise Exception(f"Embedding dimension mismatch: {error_msg}. "
-                              "Please reset the database to use the new embedding model, "
-                              "or switch back to the previous embedding model.")
+                              "Please reset the database to create a fresh collection for OpenAI embeddings.")
             
             raise Exception(f"ChromaDB indexing failed: {error_msg}")
     

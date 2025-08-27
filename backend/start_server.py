@@ -13,9 +13,6 @@ if __name__ == "__main__":
     try:
         from src.main import main
         print("Starting RAG Application Backend...")
-        print("API Documentation will be available at: http://127.0.0.1:8000/docs")
-        print("Health check available at: http://127.0.0.1:8000/api/v1/health/")
-        print("File upload endpoint: http://127.0.0.1:8000/api/v1/files/upload")
         print("\nPress Ctrl+C to stop the server\n")
         main()
     except ImportError as e:
