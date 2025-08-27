@@ -263,3 +263,146 @@ async def get_file_info(file_id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving file information: {str(e)}"
         )
+
+
+@router.get("/{file_id}/download",
+            summary="Download a file",
+            description="Download a file by its ID for viewing or saving")
+async def download_file(file_id: str):
+    """
+    Download a file by its unique ID.
+    
+    - **file_id**: The unique identifier of the file
+    """
+    try:
+        if not os.path.exists(settings.UPLOAD_DIR):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+        
+        for filename in os.listdir(settings.UPLOAD_DIR):
+            if filename.startswith(file_id):
+                file_path = os.path.join(settings.UPLOAD_DIR, filename)
+                if os.path.isfile(file_path):
+                    # Get content type
+                    extension = get_file_extension(filename)
+                    content_type_map = {
+                        '.txt': 'text/plain',
+                        '.pdf': 'application/pdf',
+                        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    }
+                    content_type = content_type_map.get(extension, 'application/octet-stream')
+                    
+                    logger.info(f"Serving file for download: {file_id}")
+                    
+                    # Return file response
+                    from fastapi.responses import FileResponse
+                    return FileResponse(
+                        path=file_path,
+                        media_type=content_type,
+                        filename=filename
+                    )
+        
+        logger.error(f"File not found for download: {file_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading file {file_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error downloading file: {str(e)}"
+        )
+
+
+@router.delete("/delete/{file_id}",
+               summary="Delete a file",
+               description="Delete a file by its ID from storage and vector database")
+async def delete_file(file_id: str):
+    """
+    Delete a file by its unique ID from both file storage and vector database.
+    
+    - **file_id**: The unique identifier of the file to delete
+    """
+    try:
+        if not os.path.exists(settings.UPLOAD_DIR):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+        
+        file_found = False
+        deleted_filename = None
+        
+        # Find and delete the file
+        for filename in os.listdir(settings.UPLOAD_DIR):
+            if filename.startswith(file_id):
+                file_path = os.path.join(settings.UPLOAD_DIR, filename)
+                if os.path.isfile(file_path):
+                    try:
+                        # Delete the physical file
+                        os.remove(file_path)
+                        file_found = True
+                        deleted_filename = filename
+                        stage_logger.info(ProcessingStage.UPLOADING, f"File deleted from storage: {filename}")
+                        break
+                    except OSError as e:
+                        logger.error(f"Error deleting file {filename}: {str(e)}")
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to delete file from storage: {str(e)}"
+                        )
+        
+        if not file_found:
+            logger.error(f"File not found for deletion: {file_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+        
+        # Try to delete from vector database (ChromaDB)
+        try:
+            from src.services.storage import vector_store
+            
+            # Delete document embeddings from vector store
+            deleted_count = await vector_store.delete_document(file_id)
+            
+            if deleted_count > 0:
+                stage_logger.info(ProcessingStage.INDEXING, 
+                                f"Deleted {deleted_count} document chunks from vector store for file: {file_id}")
+            else:
+                stage_logger.warning(ProcessingStage.INDEXING, 
+                                   f"No document chunks found in vector store for file: {file_id}")
+                
+        except Exception as vector_error:
+            # Log the error but don't fail the entire operation
+            # The file has been deleted from storage, which is the primary goal
+            logger.warning(f"Failed to delete from vector store for file {file_id}: {str(vector_error)}")
+            stage_logger.warning(ProcessingStage.INDEXING, 
+                               f"Vector store cleanup failed for {file_id}: {str(vector_error)}")
+        
+        logger.info(f"File successfully deleted: {file_id} ({deleted_filename})")
+        
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "message": f"File '{deleted_filename}' deleted successfully",
+                "file_id": file_id,
+                "filename": deleted_filename,
+                "status": "deleted"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error deleting file {file_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error during file deletion: {str(e)}"
+        )
