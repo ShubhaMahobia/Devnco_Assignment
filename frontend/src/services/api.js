@@ -58,12 +58,26 @@ export const healthAPI = {
 
 // Q&A API functions
 export const qaAPI = {
-  askQuestion: async (question, fileId = null) => {
-    const response = await api.post('/qa/ask', {
-      question,
-      file_id: fileId
+  askQuestion: (question, fileId = null, k = 5) => {
+    // Create the request body
+    const requestBody = {
+      query: question,
+      k: k
+    };
+    
+    if (fileId) {
+      requestBody.file_id = fileId;
+    }
+    
+    // Create EventSource for streaming response
+    // Since EventSource doesn't support POST with body, we'll use fetch
+    return fetch(`${API_BASE_URL}/qa/ask`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
     });
-    return response.data;
   }
 };
 

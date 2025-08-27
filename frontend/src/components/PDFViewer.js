@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import ChatInterface from './ChatInterface';
 
 // Set up PDF.js worker - use local worker from public directory
 pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
@@ -197,6 +198,9 @@ const PDFViewer = ({ selectedFile }) => {
       </div>
       
       {renderContent()}
+      
+      {/* Chat Interface below PDF viewer */}
+      <ChatInterface selectedFile={selectedFile} />
     </div>
   );
 };
