@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 
-// Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// Set up PDF.js worker - use local worker from public directory
+pdfjs.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
 
 const PDFViewer = ({ selectedFile }) => {
   const [numPages, setNumPages] = useState(null);

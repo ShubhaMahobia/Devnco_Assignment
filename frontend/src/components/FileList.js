@@ -1,10 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { fileAPI } from '../services/api';
+import ProgressIndicator from './ProgressIndicator';
 
 const FileList = ({ files, selectedFile, onFileSelect, onFilesChange, loading }) => {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [message, setMessage] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [showProgress, setShowProgress] = useState(false);
   const fileInputRef = useRef(null);
 
   const formatFileSize = (bytes) => {
@@ -51,21 +54,71 @@ const FileList = ({ files, selectedFile, onFileSelect, onFilesChange, loading })
 
     setUploading(true);
     setMessage(null);
+    setProgress(null);
+    setShowProgress(true);
 
     try {
-      await fileAPI.uploadFile(file);
-      setMessage({
-        type: 'success',
-        text: `File "${file.name}" uploaded successfully!`
-      });
+      // Start upload
+      const uploadResponse = await fileAPI.uploadFile(file);
+      const fileId = uploadResponse.file_id;
+
+      // Connect to progress stream
+      const eventSource = new EventSource(`http://127.0.0.1:8000/api/v1/files/progress/${fileId}`);
       
-      // Refresh file list
-      onFilesChange();
-      
-      // Clear message after 3 seconds
-      setTimeout(() => setMessage(null), 3000);
+      eventSource.onmessage = (event) => {
+        if (event.type === 'progress') {
+          const progressData = JSON.parse(event.data);
+          setProgress(progressData);
+          
+          // Close connection and hide progress when completed or failed
+          if (progressData.current_stage === 'completed') {
+            setTimeout(() => {
+              setShowProgress(false);
+              setProgress(null);
+              eventSource.close();
+              
+              setMessage({
+                type: 'success',
+                text: `File "${file.name}" processed successfully!`
+              });
+              
+              // Refresh file list
+              onFilesChange();
+              
+              // Clear message after 5 seconds
+              setTimeout(() => setMessage(null), 5000);
+            }, 2000); // Show success for 2 seconds
+          } else if (progressData.current_stage === 'failed') {
+            setTimeout(() => {
+              setShowProgress(false);
+              setProgress(null);
+              eventSource.close();
+              
+              setMessage({
+                type: 'error',
+                text: progressData.error_message || 'Processing failed. Please try again.'
+              });
+            }, 3000); // Show error for 3 seconds
+          }
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('Progress stream error:', error);
+        eventSource.close();
+        setShowProgress(false);
+        setProgress(null);
+        
+        setMessage({
+          type: 'error',
+          text: 'Connection to progress stream failed. File may still be processing.'
+        });
+      };
+
     } catch (error) {
       console.error('Upload error:', error);
+      setShowProgress(false);
+      setProgress(null);
       setMessage({
         type: 'error',
         text: error.response?.data?.detail || 'Failed to upload file. Please try again.'
@@ -136,11 +189,14 @@ const FileList = ({ files, selectedFile, onFileSelect, onFilesChange, loading })
   };
 
   return (
-    <div className="sidebar">
-      <div className="sidebar-header">
-        <h2>Document Library</h2>
-        <p>Upload and manage your documents</p>
-      </div>
+    <>
+      <ProgressIndicator progress={progress} isVisible={showProgress} />
+      
+      <div className="sidebar">
+        <div className="sidebar-header">
+          <h2>Document Library</h2>
+          <p>Upload and manage your documents</p>
+        </div>
 
       {/* Upload Section */}
       <div className="upload-section">
@@ -232,6 +288,7 @@ const FileList = ({ files, selectedFile, onFileSelect, onFilesChange, loading })
         )}
       </div>
     </div>
+    </>
   );
 };
 

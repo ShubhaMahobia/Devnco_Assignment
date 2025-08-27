@@ -1,16 +1,20 @@
 import os
 import uuid
 import shutil
+import asyncio
+import json
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from datetime import datetime
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 
 from config import settings
 from src.schemas.file_upload import FileUploadResponse, FileInfo, UploadError
 from src.services.ingestion import document_processor
+from src.services.progress_tracker import progress_tracker, ProgressStage as ProgressStageEnum
 from src.utils.logger import ProcessingStage, stage_logger
 
 # For now, we'll create a simple logger since the enhanced one might not be implemented yet
@@ -37,6 +41,70 @@ def generate_unique_filename(original_filename: str) -> tuple[str, str]:
     extension = get_file_extension(original_filename)
     unique_filename = f"{file_id}{extension}"
     return file_id, unique_filename
+
+async def process_document_with_progress(file: UploadFile, file_id: str) -> Dict[str, Any]:
+    """Process document with progress tracking"""
+    try:
+        # Update progress: Uploading
+        progress_tracker.update_stage(file_id, ProgressStageEnum.UPLOADING, "Saving file to storage...")
+        
+        # Step 1: Upload and save file
+        file_content = await file.read()
+        file_info = document_processor.storage_service.save_file(file_content, file.filename)
+        # Override the file_id with our progress tracking ID
+        file_info["file_id"] = file_id
+        
+        # Update progress: Extracting
+        progress_tracker.update_stage(file_id, ProgressStageEnum.EXTRACTING, "Extracting text from document...")
+        
+        # Step 2: Extract text using LangChain document loaders
+        documents = await document_processor.extract_text(file_info["file_path"], file_info["content_type"])
+        
+        # Update progress: Chunking
+        progress_tracker.update_stage(file_id, ProgressStageEnum.CHUNKING, f"Creating chunks from {len(documents)} document(s)...")
+        
+        # Step 3: Create chunks with metadata
+        chunks = document_processor.create_chunks(documents, file_info["file_id"], file.filename)
+        
+        # Update progress: Embedding
+        progress_tracker.update_stage(file_id, ProgressStageEnum.EMBEDDING, f"Generating embeddings for {len(chunks)} chunks...")
+        
+        # Step 4: Generate embeddings
+        embeddings = await document_processor.generate_embeddings(chunks)
+        
+        # Update progress: Indexing
+        progress_tracker.update_stage(file_id, ProgressStageEnum.INDEXING, "Indexing document in vector database...")
+        
+        # Step 5: Index document in ChromaDB
+        index_info = await document_processor.index_document(file_info["file_id"], chunks, embeddings)
+        
+        # Calculate total text length from all documents
+        total_text_length = sum(len(doc.page_content) for doc in documents)
+        
+        # Compile final result
+        result = {
+            "file_info": file_info,
+            "documents": [
+                {
+                    "page_content": doc.page_content,
+                    "metadata": doc.metadata
+                } for doc in documents
+            ],
+            "processing_stats": {
+                "documents_count": len(documents),
+                "text_length": total_text_length,
+                "chunks_count": len(chunks) if chunks else 0,
+                "embeddings_count": len(embeddings) if embeddings else 0
+            },
+            "index_info": index_info,
+            "status": "completed"
+        }
+        
+        return result
+        
+    except Exception as e:
+        stage_logger.error(ProcessingStage.FAILED, f"Document processing with progress failed: {str(e)}")
+        raise
 
 @router.post("/upload", 
              response_model=FileUploadResponse,
@@ -99,12 +167,18 @@ async def upload_file(file: UploadFile = File(...)):
         # Reset file pointer for processing
         await file.seek(0)
         
+        # Generate file ID for progress tracking
+        file_id = str(uuid.uuid4())
+        
+        # Initialize progress tracking
+        progress_tracker.start_processing(file_id, file.filename)
+        
         # Start the complete processing pipeline
         stage_logger.info(ProcessingStage.UPLOADING, f"Starting document processing pipeline for: {file.filename}")
         
         try:
-            # Process the document through the complete pipeline
-            processing_result = await document_processor.process_document(file)
+            # Process the document through the complete pipeline with progress tracking
+            processing_result = await process_document_with_progress(file, file_id)
             
             # Create enhanced response with processing information
             response = FileUploadResponse(
@@ -116,6 +190,9 @@ async def upload_file(file: UploadFile = File(...)):
                 status="processed"  # Changed from "uploaded" to "processed"
             )
             
+            # Mark processing as completed
+            progress_tracker.complete_processing(file_id, f"Document processed successfully with {processing_result['processing_stats']['chunks_count']} chunks")
+            
             stage_logger.info(ProcessingStage.INDEXING, 
                             f"File upload and processing completed successfully: {file.filename} "
                             f"({processing_result['processing_stats']['chunks_count']} chunks indexed)")
@@ -123,6 +200,9 @@ async def upload_file(file: UploadFile = File(...)):
             return response
             
         except Exception as processing_error:
+            # Mark processing as failed
+            progress_tracker.fail_processing(file_id, f"Processing failed: {str(processing_error)}")
+            
             # If processing fails, still return upload success but with failed status
             stage_logger.error(ProcessingStage.FAILED, 
                              f"Document processing failed for {file.filename}: {str(processing_error)}")
@@ -406,3 +486,76 @@ async def delete_file(file_id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Unexpected error during file deletion: {str(e)}"
         )
+
+
+@router.get("/progress/{file_id}",
+            summary="Get upload progress via Server-Sent Events",
+            description="Stream real-time progress updates for file processing")
+async def get_upload_progress(file_id: str):
+    """
+    Get real-time progress updates for file processing via Server-Sent Events.
+    
+    - **file_id**: The unique identifier of the file being processed
+    """
+    async def event_generator():
+        queue = asyncio.Queue()
+        progress_tracker.add_listener(file_id, queue)
+        
+        try:
+            # Send initial progress if available
+            initial_progress = progress_tracker.get_progress(file_id)
+            if initial_progress:
+                yield {
+                    "event": "progress",
+                    "data": json.dumps(initial_progress)
+                }
+            
+            # Stream updates
+            while True:
+                try:
+                    # Wait for progress update with timeout
+                    progress_data = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    
+                    yield {
+                        "event": "progress", 
+                        "data": json.dumps(progress_data)
+                    }
+                    
+                    # Stop streaming if processing is completed or failed
+                    if progress_data.get("current_stage") in ["completed", "failed"]:
+                        break
+                        
+                except asyncio.TimeoutError:
+                    # Send keep-alive message
+                    yield {
+                        "event": "keepalive",
+                        "data": json.dumps({"timestamp": datetime.now().isoformat()})
+                    }
+                    continue
+                    
+        except asyncio.CancelledError:
+            # Client disconnected
+            pass
+        finally:
+            progress_tracker.remove_listener(file_id, queue)
+    
+    return EventSourceResponse(event_generator())
+
+
+@router.get("/progress/{file_id}/status",
+            summary="Get current upload progress status",
+            description="Get the current progress status for file processing")
+async def get_progress_status(file_id: str):
+    """
+    Get the current progress status for file processing.
+    
+    - **file_id**: The unique identifier of the file being processed
+    """
+    progress = progress_tracker.get_progress(file_id)
+    if not progress:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Progress not found for this file ID"
+        )
+    
+    return JSONResponse(content=progress)
